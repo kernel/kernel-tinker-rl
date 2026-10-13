@@ -182,6 +182,19 @@ Tinker checkpoints can be sampled directly with `model_path=tinker://...`. To se
 
 ---
 
+## Weekly Maintenance
+
+`.github/workflows/weekly-maintenance.yml` runs a Pi agent every Monday with the scope in [`weekly-maintenance-prompt.md`](.github/workflows/weekly-maintenance-prompt.md). Each run covers:
+
+- **Tinker stack:** upgrades `tinker`, `tinker-cookbook`, and the lockfile, and adapts the code to API changes.
+- **REPL reference:** refreshes the vendored Browser REPL reference.
+- **Default model:** baselines new small Tinker models against the default, recording them in the table above.
+- **Smoke tests:** runs a short live evaluation and a 1-step training run.
+
+Each run updates the `automation/weekly-maintenance` pull request and squash-merges it once BugBot and all checks are green.
+
+---
+
 ## References
 
 - [Kernel Browser REPL docs](https://github.com/kernel/kernel-images/blob/main/server/docs/repl.md)

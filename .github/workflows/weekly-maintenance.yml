@@ -1,0 +1,238 @@
+name: Weekly maintenance
+
+on:
+  schedule:
+    # Mondays at 14:23 UTC
+    - cron: "23 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: weekly-maintenance
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      POOL_NAME: weekly-maintenance-${{ github.run_id }}
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: kernel-tinker-rl
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Kernel CLI
+        run: |
+          npm install -g --ignore-scripts @onkernel/cli
+          kernel --version
+
+      - name: Install Pi and web access
+        env:
+          PI_TELEMETRY: "0"
+        run: |
+          npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+          pi install npm:pi-web-access@latest
+          pi --version
+          pi list
+
+      - name: Configure renewable GitHub App authentication
+        env:
+          APP_ID: ${{ secrets.ADMIN_APP_ID }}
+          APP_INSTALLATION_ID: ${{ steps.app-token.outputs.installation-id }}
+          APP_PRIVATE_KEY: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+        run: |
+          auth_dir="$RUNNER_TEMP/github-app-auth"
+          bin_dir="$auth_dir/bin"
+          mkdir -p "$bin_dir"
+          chmod 700 "$auth_dir" "$bin_dir"
+
+          private_key_file="$auth_dir/private-key.pem"
+          token_helper="$auth_dir/github-app-installation-token.mjs"
+          printf '%s' "$APP_PRIVATE_KEY" > "$private_key_file"
+          cp "$GITHUB_WORKSPACE/.github/scripts/github-app-installation-token.mjs" "$token_helper"
+          chmod 600 "$private_key_file" "$token_helper"
+
+          real_gh="$(command -v gh)"
+          cat > "$bin_dir/gh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          token="$(node "$GITHUB_APP_TOKEN_HELPER")"
+          if [ "${1:-}" = "pr" ] && [ "${2:-}" = "checks" ]; then
+            exec env GH_TOKEN="$GITHUB_CHECKS_TOKEN" GITHUB_TOKEN="$GITHUB_CHECKS_TOKEN" "$GITHUB_REAL_GH" "$@"
+          fi
+          if [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ]; then
+            pr_number="${3:-}"
+            if [ -z "$pr_number" ] || [[ "$pr_number" = -* ]]; then
+              echo "A pull request number is required for the BugBot merge gate" >&2
+              exit 1
+            fi
+            head_sha="$(env GH_TOKEN="$token" GITHUB_TOKEN="$token" "$GITHUB_REAL_GH" pr view "$pr_number" --json headRefOid --jq .headRefOid)"
+            check_runs="$(env GH_TOKEN="$GITHUB_CHECKS_TOKEN" GITHUB_TOKEN="$GITHUB_CHECKS_TOKEN" "$GITHUB_REAL_GH" api "repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs?filter=latest&per_page=100")"
+            bugbot_conclusion="$(jq -r '[.check_runs[] | select(.name == "Cursor Bugbot" and .status == "completed")] | sort_by(.completed_at) | last | .conclusion // ""' <<<"$check_runs")"
+            if [ "$bugbot_conclusion" != "success" ]; then
+              echo "Cursor Bugbot is not green for $head_sha (conclusion: ${bugbot_conclusion:-missing})" >&2
+              exit 1
+            fi
+            incomplete_checks="$(jq -r '[.check_runs[] | select(.status != "completed")] | map(.name) | join(", ")' <<<"$check_runs")"
+            failed_checks="$(jq -r '[.check_runs[] | select(.status == "completed" and (.conclusion | IN("success", "neutral", "skipped") | not))] | map("\(.name)=\(.conclusion)") | join(", ")' <<<"$check_runs")"
+            if [ -n "$incomplete_checks" ] || [ -n "$failed_checks" ]; then
+              echo "Pull request checks are not green for $head_sha (incomplete: ${incomplete_checks:-none}; failed: ${failed_checks:-none})" >&2
+              exit 1
+            fi
+            commit_status="$(env GH_TOKEN="$GITHUB_CHECKS_TOKEN" GITHUB_TOKEN="$GITHUB_CHECKS_TOKEN" "$GITHUB_REAL_GH" api "repos/$GITHUB_REPOSITORY/commits/$head_sha/status")"
+            status_count="$(jq -r .total_count <<<"$commit_status")"
+            status_state="$(jq -r .state <<<"$commit_status")"
+            if [ "$status_count" -gt 0 ] && [ "$status_state" != "success" ]; then
+              echo "Commit statuses are not green for $head_sha (state: $status_state)" >&2
+              exit 1
+            fi
+          fi
+          exec env GH_TOKEN="$token" GITHUB_TOKEN="$token" "$GITHUB_REAL_GH" "$@"
+          EOF
+          cat > "$bin_dir/git-credential-github-app" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [ "${1:-}" = "get" ] || exit 0
+          protocol=""
+          host=""
+          while IFS='=' read -r key value; do
+            case "$key" in
+              protocol) protocol="$value" ;;
+              host) host="$value" ;;
+            esac
+          done
+          [ "$protocol" = "https" ] && [ "$host" = "github.com" ] || exit 0
+          printf 'username=x-access-token\n'
+          printf 'password=%s\n' "$(node "$GITHUB_APP_TOKEN_HELPER")"
+          EOF
+          cat > "$bin_dir/trigger-bugbot" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          pr_number="${1:-}"
+          if [ -z "$pr_number" ] || [[ "$pr_number" = -* ]]; then
+            echo "A pull request number is required" >&2
+            exit 1
+          fi
+          pr_url="$(gh pr view "$pr_number" --json url --jq .url)"
+          response="$(curl --silent --show-error --fail-with-body \
+            --request POST \
+            --url https://api.cursor.com/bugbot/review \
+            --user "$CURSOR_API_KEY:" \
+            --header 'Content-Type: application/json' \
+            --data "$(jq -cn --arg prUrl "$pr_url" '{prUrl: $prUrl}')")"
+          jq -e '.outcome == "success"' <<<"$response" >/dev/null
+          jq -r '"Queued Cursor Bugbot review (request_id: \(.request_id))"' <<<"$response"
+          EOF
+          chmod 700 "$bin_dir/gh" "$bin_dir/git-credential-github-app" "$bin_dir/trigger-bugbot"
+
+          git config user.name "kernel-internal[bot]"
+          git config user.email "260533166+kernel-internal[bot]@users.noreply.github.com"
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --local --unset-all credential.helper || true
+          git config --local --unset-all credential.https://github.com.helper || true
+          git config --local credential.https://github.com.helper "$bin_dir/git-credential-github-app"
+
+          {
+            echo "GITHUB_APP_ID=$APP_ID"
+            echo "GITHUB_APP_INSTALLATION_ID=$APP_INSTALLATION_ID"
+            echo "GITHUB_APP_PRIVATE_KEY_FILE=$private_key_file"
+            echo "GITHUB_APP_REPOSITORY=kernel-tinker-rl"
+            echo "GITHUB_APP_TOKEN_CACHE=$auth_dir/token.json"
+            echo "GITHUB_APP_TOKEN_HELPER=$token_helper"
+            echo "GITHUB_REAL_GH=$real_gh"
+            echo "OUTCOME_FILE=$RUNNER_TEMP/weekly-maintenance.outcome"
+          } >> "$GITHUB_ENV"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+
+      - name: Run weekly maintenance
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_CHECKS_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GIT_TERMINAL_PROMPT: "0"
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
+          PI_PREFERRED_MODEL: ${{ vars.PI_PREFERRED_MODEL }}
+          PI_SKIP_VERSION_CHECK: "1"
+          PI_TELEMETRY: "0"
+        run: |
+          : "${CURSOR_API_KEY:?Set CURSOR_API_KEY with Cursor admin scope}"
+          : "${PI_PREFERRED_MODEL:?Set the PI_PREFERRED_MODEL organization variable}"
+          : "${KERNEL_API_KEY:?Set KERNEL_API_KEY}"
+          : "${TINKER_API_KEY:?Set TINKER_API_KEY}"
+          : "${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY}"
+          rendered_prompt="$RUNNER_TEMP/weekly-maintenance-prompt.md"
+          envsubst '${GITHUB_REPOSITORY} ${OUTCOME_FILE} ${POOL_NAME}' \
+            < .github/workflows/weekly-maintenance-prompt.md \
+            > "$rendered_prompt"
+          pi --print --no-session --approve \
+            --model "$PI_PREFERRED_MODEL" --thinking max \
+            @"$rendered_prompt"
+
+      - name: Confirm the run produced an outcome
+        run: |
+          outcome="$(tr -d '\r\n' < "$OUTCOME_FILE" 2>/dev/null || true)"
+          case "$outcome" in
+            no-updates)
+              open_pr="$(gh pr list --head automation/weekly-maintenance --state open --json number --jq '.[0].number // ""')"
+              if [ -n "$open_pr" ]; then
+                echo "::error::Agent reported no updates while PR #$open_pr remains open"
+                exit 1
+              fi
+              echo "Everything in scope is current."
+              ;;
+            merged:*)
+              pr_number="${outcome#merged:}"
+              state="$(gh pr view "$pr_number" --json state --jq .state)"
+              if [ "$state" != "MERGED" ]; then
+                echo "::error::Agent reported $outcome, but PR #$pr_number is $state"
+                exit 1
+              fi
+              echo "Merged PR #$pr_number."
+              ;;
+            *)
+              echo "::error::Agent exited without recording no-updates or merged:<pr-number> in $OUTCOME_FILE"
+              exit 1
+              ;;
+          esac
+
+      - name: Delete the smoke-test browser pool
+        if: always()
+        env:
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: kernel browser-pools delete "$POOL_NAME" --force || true
+
+      - name: Revoke renewable app token
+        if: always()
+        run: |
+          if [ -f "$GITHUB_APP_TOKEN_CACHE" ]; then
+            gh api --method DELETE /installation/token || true
+          fi
+          rm -rf "$RUNNER_TEMP/github-app-auth"
