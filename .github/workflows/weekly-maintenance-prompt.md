@@ -92,7 +92,7 @@ Run all of these and record each command and its result for the pull request bod
 1. `uvx ruff check core scripts examples` and `uvx ruff format --check core scripts examples`.
 2. `uv run python -c "import core, examples, scripts.train, scripts.evaluate"`.
 3. Offline env construction: build a `BrowserReplDatasetBuilder` for agent_auth with the default model and `webjudge_model=None`, call it, `make_envs()` on the first group, `initial_observation()` on one env, then `cleanup()`. No browser should be acquired.
-4. Live smoke tests, after creating the pool with `kernel browser-pools create --name ${POOL_NAME} --size 4 --timeout 300` and waiting until it has available browsers:
+4. Live smoke tests, after creating the pool with `kernel browser-pools create --name ${POOL_NAME} --size 10 --timeout 300` (one browser per in-flight baseline task at `concurrency=10`) and waiting until it has available browsers:
    - `uv run python -m scripts.evaluate env=web_nav max_tasks=2 pool_name=${POOL_NAME} verbose=True`. Both episodes must finish without errors and make at least one `browser_repl` call.
    - `uv run python -m scripts.train env=agent_auth pool_name=${POOL_NAME} max_tasks=2 batch_size=1 group_size=2 max_steps=1 eval_every=0 save_every=0 log_path=results/smoke-train behavior_if_log_dir_exists=delete`. It must complete a training step and save a checkpoint.
 5. Any default-model baselines from Scope item 4.
