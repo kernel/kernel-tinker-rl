@@ -30,7 +30,7 @@ from datetime import datetime
 
 import chz
 from dotenv import load_dotenv
-from tinker_cookbook import cli_utils, hyperparam_utils
+from tinker_cookbook import cli_utils
 from tinker_cookbook.rl import train
 
 from core.env import BrowserReplDatasetBuilder
@@ -53,7 +53,9 @@ class CLIConfig:
     model_name: str = "Qwen/Qwen3.6-35B-A3B"
     renderer_name: str = "qwen3_5_disable_thinking"
     lora_rank: int = 32
-    learning_rate: float | None = None  # defaults to hyperparam_utils.get_lr(model_name)
+    # Not hyperparam_utils.get_lr(): that is a supervised LoRA rate (5e-4 here), and one RL
+    # step at it breaks tool calling. The cookbook's RL recipes use 1e-5 to 4e-5.
+    learning_rate: float = 4e-5
 
     # Rollouts
     batch_size: int = 8
@@ -78,7 +80,6 @@ class CLIConfig:
 
 async def cli_main(cfg: CLIConfig) -> None:
     env = get_env(cfg.env)
-    learning_rate = cfg.learning_rate or hyperparam_utils.get_lr(cfg.model_name)
 
     builder = BrowserReplDatasetBuilder(
         env_name=env.name,
@@ -102,7 +103,7 @@ async def cli_main(cfg: CLIConfig) -> None:
     model_short = cfg.model_name.split("/")[-1].lower()
     run_name = (
         f"{env.name}_{model_short}_bs{cfg.batch_size}_gs{cfg.group_size}_"
-        f"lr{learning_rate:.1e}_rank{cfg.lora_rank}_{datetime.now():%Y-%m-%d-%H-%M}"
+        f"lr{cfg.learning_rate:.1e}_rank{cfg.lora_rank}_{datetime.now():%Y-%m-%d-%H-%M}"
     )
     log_path = cfg.log_path or f"results/{run_name}"
     cli_utils.check_log_dir(log_path, behavior_if_exists=cfg.behavior_if_log_dir_exists)
@@ -113,7 +114,7 @@ async def cli_main(cfg: CLIConfig) -> None:
         renderer_name=cfg.renderer_name,
         log_path=log_path,
         dataset_builder=builder,
-        learning_rate=learning_rate,
+        learning_rate=cfg.learning_rate,
         lora_rank=cfg.lora_rank,
         max_tokens=cfg.max_tokens,
         temperature=cfg.temperature,
