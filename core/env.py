@@ -256,6 +256,7 @@ class BrowserReplDatasetBuilder(RLDatasetBuilder):
     eval_task_file: str | None = None
     eval_group_size: int = 1
     max_tasks: int | None = None
+    num_epochs: int = 1
     seed: int = 0
     max_turns: int = 10
     max_trajectory_tokens: int = 32 * 1024
@@ -297,16 +298,26 @@ class BrowserReplDatasetBuilder(RLDatasetBuilder):
             return None
         return WebJudge(model=self.webjudge_model, evaluation_criteria=self.evaluation_criteria)
 
-    def _dataset(self, task_file: str, group_size: int, shuffle: bool) -> BrowserTaskDataset:
-        tasks = load_tasks(task_file, limit=self.max_tasks)
-        if shuffle:
-            random.Random(self.seed).shuffle(tasks)
+    def _dataset(
+        self, task_file: str, group_size: int, shuffle: bool, num_epochs: int = 1
+    ) -> BrowserTaskDataset:
+        loaded = load_tasks(task_file, limit=self.max_tasks)
+        # The trainer stops after one pass over the dataset, so repeat it once per epoch,
+        # reshuffled each time.
+        tasks: list[BrowserTask] = []
+        for epoch in range(num_epochs):
+            epoch_tasks = list(loaded)
+            if shuffle:
+                random.Random(self.seed + epoch).shuffle(epoch_tasks)
+            tasks.extend(epoch_tasks)
         return BrowserTaskDataset(
             tasks, self.batch_size, lambda task: self.build_env_group_builder(task, group_size)
         )
 
     async def __call__(self) -> tuple[RLDataset, RLDataset | None]:
-        train = self._dataset(self.task_file, self.group_size, shuffle=True)
+        train = self._dataset(
+            self.task_file, self.group_size, shuffle=True, num_epochs=self.num_epochs
+        )
         test = None
         if self.eval_task_file is not None:
             test = self._dataset(self.eval_task_file, self.eval_group_size, shuffle=False)

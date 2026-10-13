@@ -46,6 +46,7 @@ class CLIConfig:
     task_file: str | None = None  # defaults to the env's tasks.jsonl
     eval_task_file: str | None = None
     max_tasks: int | None = None
+    num_epochs: int = 1  # passes over task_file; training stops after the last one
     pool_name: str = "rl-training"
 
     # Model
@@ -88,6 +89,7 @@ async def cli_main(cfg: CLIConfig) -> None:
         task_file=cfg.task_file or env.task_file,
         eval_task_file=cfg.eval_task_file,
         max_tasks=cfg.max_tasks,
+        num_epochs=cfg.num_epochs,
         pool_name=cfg.pool_name,
         batch_size=cfg.batch_size,
         group_size=cfg.group_size,
