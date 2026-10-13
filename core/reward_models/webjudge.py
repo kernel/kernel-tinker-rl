@@ -30,6 +30,10 @@ from .base import RewardModel, Trajectory
 # Configuration
 SCORE_THRESHOLD = 3  # Screenshots scoring more than this value are "key screenshots"
 MAX_IMAGES = 50  # Maximum images to include in final judgment
+# Reasoning models (the default gpt-5-mini) spend hidden reasoning tokens from the same
+# completion budget, often 500-1000 before any visible text. A smaller budget returns
+# truncated or empty replies, which parse as score 1 or as a failed verdict.
+MAX_COMPLETION_TOKENS = 8192
 
 # Default evaluation criteria (from Online-Mind2Web, designed for e-commerce/filtering tasks)
 DEFAULT_EVALUATION_CRITERIA = """1: The filtered results must be displayed correctly. If filters were not properly applied (i.e., missing selection, missing confirmation, or no visible effect in results), the task is not considered successful.
@@ -193,7 +197,7 @@ class WebJudge(RewardModel):
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
-            max_tokens=512,
+            max_tokens=MAX_COMPLETION_TOKENS,
             temperature=0,
         )
 
@@ -285,7 +289,7 @@ The snapshot of the web page is shown in the image."""
                         ],
                     },
                 ],
-                max_tokens=512,
+                max_tokens=MAX_COMPLETION_TOKENS,
                 temperature=0,
             )
 
@@ -384,16 +388,19 @@ Action History:
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": content},
             ],
-            max_tokens=1024,
+            max_tokens=MAX_COMPLETION_TOKENS,
             temperature=0,
         )
 
         result = response.choices[0].message.content or ""
+        if "status:" not in result.lower():
+            # Raise rather than return failure, so callers count it as a judge error.
+            raise RuntimeError(
+                f"WebJudge verdict has no Status line (finish_reason="
+                f"{response.choices[0].finish_reason})"
+            )
 
-        # Extract success/failure
-        success = False
-        if "status:" in result.lower():
-            status_part = result.lower().split("status:")[1]
-            success = "success" in status_part
+        status_part = result.lower().split("status:")[1]
+        success = "success" in status_part
 
         return success, result
