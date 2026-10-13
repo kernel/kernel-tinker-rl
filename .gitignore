@@ -38,7 +38,6 @@ ENV/
 # Data files (generated)
 data/*.jsonl
 data/*.json
-data/screenshots/
 # Note: examples/agent_auth/tasks.jsonl IS tracked (pre-processed task data)
 # Generated train/eval splits (regenerate with split_dataset.py)
 examples/*/tasks_train.jsonl
@@ -47,7 +46,6 @@ examples/*/tasks_eval.jsonl
 # Training outputs
 checkpoints/
 results/
-queries/
 
 # Generated plots
 *.png
