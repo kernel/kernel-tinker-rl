@@ -94,7 +94,7 @@ uv run python -m scripts.train \
     wandb_project=browser-repl-rl
 ```
 
-Logs, metrics, and `checkpoints.jsonl` go to `results/<run_name>/`. The learning rate defaults to `hyperparam_utils.get_lr(model_name)`. Every field of `CLIConfig` in `scripts/train.py` can be overridden as `key=value`.
+Logs, metrics, and `checkpoints.jsonl` go to `results/<run_name>/`. The learning rate defaults to 4e-5, in the range of the cookbook's RL recipes; `hyperparam_utils.get_lr()` is a supervised fine-tuning LR and is too high for RL. Every field of `CLIConfig` in `scripts/train.py` can be overridden as `key=value`.
 
 ### 8. Evaluate the trained model
 

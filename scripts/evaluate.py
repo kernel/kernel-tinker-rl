@@ -160,16 +160,24 @@ async def main(cfg: CLIConfig) -> None:
     groups = await asyncio.gather(*[bounded(task) for task in tasks])
     episodes = [episode for group in groups for episode in group]
 
-    successes = sum(bool(e.get("judge_success")) for e in episodes)
+    # Count rewarded episodes, as training does: WebJudge can pass an episode that hit
+    # max_turns without a final answer, but the termination policy zeroes its reward.
+    n = max(len(episodes), 1)
+    successes = sum(e["reward"] > 0 for e in episodes)
+    judge_successes = sum(bool(e.get("judge_success")) for e in episodes)
     console.print(
-        f"\nSuccess rate: {successes}/{len(episodes)} "
-        f"({successes / max(len(episodes), 1):.1%}), "
+        f"\nSuccess rate: {successes}/{len(episodes)} ({successes / n:.1%}), "
+        f"judge success: {judge_successes}/{len(episodes)} ({judge_successes / n:.1%}), "
         f"errors: {sum('error' in e for e in episodes)}"
     )
 
     if cfg.output:
         Path(cfg.output).parent.mkdir(parents=True, exist_ok=True)
-        summary = {"success_rate": successes / max(len(episodes), 1), "episodes": len(episodes)}
+        summary = {
+            "success_rate": successes / n,
+            "judge_success_rate": judge_successes / n,
+            "episodes": len(episodes),
+        }
         with open(cfg.output, "w") as f:
             json.dump(
                 {"config": chz.asdict(cfg), "summary": summary, "results": episodes}, f, indent=2
