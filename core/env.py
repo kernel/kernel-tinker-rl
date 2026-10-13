@@ -55,23 +55,19 @@ class _SynchronizedTokenizer:
         self._tokenizer = tokenizer
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._tokenizer, name)
+        attribute = getattr(self._tokenizer, name)
+        if not callable(attribute):
+            return attribute
+
+        def synchronized(*args: Any, **kwargs: Any) -> Any:
+            with _TOKENIZER_LOCK:
+                return attribute(*args, **kwargs)
+
+        return synchronized
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         with _TOKENIZER_LOCK:
             return self._tokenizer(*args, **kwargs)
-
-    def encode(self, *args: Any, **kwargs: Any) -> Any:
-        with _TOKENIZER_LOCK:
-            return self._tokenizer.encode(*args, **kwargs)
-
-    def decode(self, *args: Any, **kwargs: Any) -> Any:
-        with _TOKENIZER_LOCK:
-            return self._tokenizer.decode(*args, **kwargs)
-
-    def convert_tokens_to_ids(self, *args: Any, **kwargs: Any) -> Any:
-        with _TOKENIZER_LOCK:
-            return self._tokenizer.convert_tokens_to_ids(*args, **kwargs)
 
 
 def _synchronized_tokenizer(tokenizer: Any) -> _SynchronizedTokenizer:
