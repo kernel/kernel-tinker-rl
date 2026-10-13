@@ -12,12 +12,15 @@ The agent has exactly one tool: `browser_repl`, which runs JavaScript in the [Ke
 
 The default policy is `Qwen/Qwen3.6-35B-A3B` with thinking disabled: a mixture-of-experts model with 3B active parameters, so sampling is fast and cheap. Any Tinker model with a tool-calling renderer works (`model_name=...`); list them with `tinker.ServiceClient().get_server_capabilities()`.
 
-| Policy (agent_auth, first 20 eval-split tasks, 1 rollout each) | Baseline success |
-| --- | --- |
-| `Qwen/Qwen3.6-35B-A3B` | 6/20 (30%) |
-| `Qwen/Qwen3.5-4B` | 1/20 (5%) |
+| Policy (agent_auth, first 20 eval-split tasks, 1 rollout each) | Renderer | Baseline success | Measured |
+| --- | --- | --- | --- |
+| `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | `nemotron3_ultra_disable_thinking` | 7/20 (35%) | 2026-10-13 |
+| `Qwen/Qwen3.6-35B-A3B` | `qwen3_5_disable_thinking` | 6/20 (30%) | 2026-10-13 |
+| `Qwen/Qwen3.5-9B` | `qwen3_5_disable_thinking` | 5/20 (25%) | 2026-10-13 |
+| `Qwen/Qwen3-8B` | `qwen3_disable_thinking` | 2/20 (10%) | 2026-10-13 |
+| `Qwen/Qwen3.5-4B` | `qwen3_5_disable_thinking` | 1/20 (5%) | 2026-10-13 |
 
-GRPO learns only from groups with mixed outcomes, so a ~30% baseline is a good starting point; at 5% almost every group scores all zeros.
+Nemotron 3.5 Lightning improved by only one task while using the same 3B active parameters, so the default remains Qwen3.6. GRPO learns only from groups with mixed outcomes, making a ~30% baseline a good starting point; at 5% almost every group scores all zeros.
 
 ---
 
