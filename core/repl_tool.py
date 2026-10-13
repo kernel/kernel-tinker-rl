@@ -169,7 +169,11 @@ class BrowserReplTool:
         """
         if self.session_id is None:
             browser = await self.kernel.browser_pools.acquire(
-                self.pool_name, acquire_timeout_seconds=self.acquire_timeout_seconds
+                self.pool_name,
+                acquire_timeout_seconds=self.acquire_timeout_seconds,
+                # Acquiring is a long poll; the SDK's shorter default HTTP timeout would
+                # otherwise expire while queued behind other rollouts.
+                timeout=self.acquire_timeout_seconds + 30,
             )
             self.session_id = browser.session_id
             try:

@@ -16,6 +16,7 @@ import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 import chz
@@ -42,6 +43,37 @@ logger = logging.getLogger(__name__)
 
 JUDGE_SCREENSHOT_MAX_SIZE = 1280
 JUDGE_CODE_MAX_CHARS = 1000
+
+# Cookbook envs render prompts in worker threads. Transformers 5 mutates the shared
+# fast-tokenizer backend during encode(), so concurrent calls can fail with
+# `RuntimeError: Already borrowed`. Serialize tokenizer operations within each process.
+_TOKENIZER_LOCK = RLock()
+
+
+class _SynchronizedTokenizer:
+    def __init__(self, tokenizer: Any):
+        self._tokenizer = tokenizer
+
+    def __getattr__(self, name: str) -> Any:
+        attribute = getattr(self._tokenizer, name)
+        if not callable(attribute):
+            return attribute
+
+        def synchronized(*args: Any, **kwargs: Any) -> Any:
+            with _TOKENIZER_LOCK:
+                return attribute(*args, **kwargs)
+
+        return synchronized
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        with _TOKENIZER_LOCK:
+            return self._tokenizer(*args, **kwargs)
+
+
+def _synchronized_tokenizer(tokenizer: Any) -> _SynchronizedTokenizer:
+    if isinstance(tokenizer, _SynchronizedTokenizer):
+        return tokenizer
+    return _SynchronizedTokenizer(tokenizer)
 
 
 @dataclass(frozen=True)
@@ -170,6 +202,11 @@ class BrowserReplEnvGroupBuilder(EnvGroupBuilder):
         self.tools: list[BrowserReplTool] = []
         self.rewards: list[WebJudgeReward] = []
 
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore tokenizer synchronization after the renderer is unpickled."""
+        self.__dict__.update(state)
+        self.renderer.tokenizer = _synchronized_tokenizer(self.renderer.tokenizer)
+
     async def make_envs(self) -> Sequence[Env]:
         # Retry strategies call make_envs() again before cleanup(), so accumulate tools
         # and rewards rather than replacing them; cleanup() releases every browser.
@@ -289,7 +326,8 @@ class BrowserReplDatasetBuilder(RLDatasetBuilder):
 
     @chz.init_property
     def _renderer(self) -> Renderer:
-        return get_renderer(self.renderer_name, tokenizer_utils.get_tokenizer(self.model_name))
+        tokenizer = _synchronized_tokenizer(tokenizer_utils.get_tokenizer(self.model_name))
+        return get_renderer(self.renderer_name, tokenizer, model_name=self.model_name)
 
     @chz.init_property
     def _webjudge(self) -> WebJudge | None:

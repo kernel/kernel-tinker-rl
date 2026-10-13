@@ -43,10 +43,14 @@ def get_label(metrics_path: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Plot training metrics")
-    parser.add_argument("paths", nargs="*", default=[], help="Results directories or metrics.jsonl files")
+    parser.add_argument(
+        "paths", nargs="*", default=[], help="Results directories or metrics.jsonl files"
+    )
     parser.add_argument("-o", "--output", help="Output PNG path")
     parser.add_argument("--metric", default="env/all/reward/total", help="Metric to plot")
-    parser.add_argument("-c", "--continuation", action="store_true", help="Combine runs into one line")
+    parser.add_argument(
+        "-c", "--continuation", action="store_true", help="Combine runs into one line"
+    )
     parser.add_argument("--title", help="Plot title")
     args = parser.parse_args()
 
@@ -91,8 +95,16 @@ def main():
         print(f"Plotted {len(steps)} total steps (continuation)")
     else:
         for i, (label, df) in enumerate(runs):
-            plt.plot(df["step"], df[args.metric], "o-", markersize=3, lw=1.5, 
-                     color=colors[i % 10], label=label, alpha=0.8)
+            plt.plot(
+                df["step"],
+                df[args.metric],
+                "o-",
+                markersize=3,
+                lw=1.5,
+                color=colors[i % 10],
+                label=label,
+                alpha=0.8,
+            )
             print(f"  {label}: {len(df)} steps")
 
     metric_name = args.metric.split("/")[-1].replace("_", " ").title()

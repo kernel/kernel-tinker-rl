@@ -128,11 +128,10 @@ def main():
     with open(eval_path) as f:
         eval_count = sum(1 for line in f if line.strip())
 
-    print(f"\nCreated:")
+    print("\nCreated:")
     print(f"  {train_path} ({train_count} tasks)")
     print(f"  {eval_path} ({eval_count} tasks)")
 
 
 if __name__ == "__main__":
     main()
-
