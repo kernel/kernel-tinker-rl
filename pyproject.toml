@@ -1,31 +1,29 @@
 [project]
 name = "kernel-tinker-rl"
 version = "0.1.0"
-description = "Train computer use agents with RL using Kernel browsers and Tinker"
+description = "Train browser agents with RL using the Kernel Browser REPL and Tinker"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "chz>=0.4.0",
-    "cuid2>=2.0.1",
-    "kernel>=0.23.0",
+    "kernel>=0.123.0",
     "matplotlib>=3.10.8",
     "openai>=2.13.0",
     "pillow>=12.0.0",
     "python-dotenv>=1.2.1",
-    "raindrop-ai>=0.0.34",
     "rich>=14.2.0",
-    "tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git",
+    "tinker>=0.33.1",
+    "tinker-cookbook>=0.5.7",
     "wandb>=0.23.0",
-    "websockets>=15.0.1",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "ruff>=0.1.0"]
 
 [project.urls]
-Documentation = "https://docs.onkernel.com"
-Repository = "https://github.com/onkernel/kernel-tinker-rl"
+Documentation = "https://www.kernel.sh/docs"
+Repository = "https://github.com/kernel/kernel-tinker-rl"
 
 [tool.ruff]
 line-length = 100
