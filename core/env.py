@@ -113,13 +113,11 @@ class WebJudgeReward:
             "repl_calls": len(calls),
             "repl_errors": sum(c.failed for c in calls),
         }
-        if self.webjudge is None:
+        # Every task requires looking at the browser; an answer without it earns nothing.
+        if self.webjudge is None or not calls:
             return 0.0, metrics
 
         screenshots = [c.screenshot for c in calls if c.screenshot]
-        if not screenshots:
-            final = await self.tool.screenshot()
-            screenshots = [final] if final else []
         action_history = [f"browser_repl:\n{c.code[:JUDGE_CODE_MAX_CHARS]}" for c in calls]
         action_history.append(f"Final answer: {final_answer}")
 

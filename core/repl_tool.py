@@ -21,6 +21,26 @@ from tinker_cookbook.tool_use import ToolInput, ToolResult, error_tool_result, s
 
 MAX_OUTPUT_CHARS = 4000
 
+# Pooled browsers come back with the previous occupant's tabs, cookies, and storage, so
+# each episode runs in a fresh browser context and disposes every older one. The default
+# context cannot be disposed (REPL helpers like newTab() open tabs there), so clear its
+# cookies and close its tabs; the episode's window keeps the browser open.
+_SETUP_JS = """
+var fresh = (await cdp("Target.createBrowserContext", {}, null)).browserContextId;
+var {targetId: episodeTab} = await cdp("Target.createTarget", {url: "about:blank", browserContextId: fresh}, null);
+for (const id of (await cdp("Target.getBrowserContexts", {}, null)).browserContextIds) {
+  if (id !== fresh) await cdp("Target.disposeBrowserContext", {browserContextId: id}, null);
+}
+await cdp("Storage.clearCookies", {}, null);
+var {targetInfos} = await cdp("Target.getTargets", {}, null);
+for (const t of targetInfos.filter(t => t.type === "page" && t.browserContextId !== fresh)) {
+  await cdp("Target.closeTarget", {targetId: t.targetId}, null);
+}
+await switchTab(episodeTab);
+await gotoUrl(%s);
+await waitForLoad();
+"""
+
 _REFERENCE_PATH = Path(__file__).parent / "repl_reference.md"
 REPL_REFERENCE = re.sub(r"<!--.*?-->", "", _REFERENCE_PATH.read_text(), flags=re.S).strip()
 
@@ -96,7 +116,7 @@ class BrowserReplTool:
         self.timeout_sec = timeout_sec
         self.session_id: str | None = None
         self.calls: list[ReplCall] = []
-        self.session_lost = False
+        self.reusable = True
 
     def to_spec(self) -> ToolSpec:
         return {
@@ -120,13 +140,15 @@ class BrowserReplTool:
             )
         except APIStatusError as e:
             # 404/410 mean the browser is gone; nothing more can happen in this episode.
-            self.session_lost = e.status_code in (404, 410)
+            session_lost = e.status_code in (404, 410)
+            if session_lost:
+                self.reusable = False
             self.calls.append(ReplCall(code=code, output=f"Error: {e.message}", failed=True))
             return error_tool_result(
                 f"Browser REPL request failed: {e.message}",
                 call_id=call_id,
                 name=self.name,
-                should_stop=self.session_lost,
+                should_stop=session_lost,
             )
 
         output = format_repl_result(result)
@@ -141,7 +163,7 @@ class BrowserReplTool:
         return simple_tool_result(output, call_id=call_id, name=self.name)
 
     async def _ensure_session(self) -> str:
-        """Acquire a pooled browser and load the start URL on first use.
+        """Acquire a pooled browser and open the start URL in a clean context on first use.
 
         Lazy so that envs which never run (e.g. spares created by a retry) hold no browser.
         """
@@ -150,23 +172,28 @@ class BrowserReplTool:
                 self.pool_name, acquire_timeout_seconds=self.acquire_timeout_seconds
             )
             self.session_id = browser.session_id
-            result = await self.kernel.browsers.repl(
-                self.session_id,
-                code=f"await gotoUrl({json.dumps(self.initial_url)}); await waitForLoad();",
-                reset=True,
-                timeout_sec=self.timeout_sec,
-            )
-            if not result.success:
-                raise RuntimeError(f"Failed to load {self.initial_url}: {result.error}")
+            try:
+                result = await self.kernel.browsers.repl(
+                    self.session_id,
+                    code=_SETUP_JS % json.dumps(self.initial_url),
+                    reset=True,
+                    timeout_sec=self.timeout_sec,
+                )
+                if not result.success:
+                    raise RuntimeError(f"Failed to load {self.initial_url}: {result.error}")
+            except BaseException:
+                # The browser's state is unknown; have the pool replace it.
+                self.reusable = False
+                raise
         return self.session_id
 
     async def release(self) -> None:
-        """Return the browser to the pool; a lost session is not reused."""
+        """Return the browser to the pool, or have the pool replace it if it is unusable."""
         if self.session_id is None:
             return
         session_id, self.session_id = self.session_id, None
         await self.kernel.browser_pools.release(
-            self.pool_name, session_id=session_id, reuse=not self.session_lost
+            self.pool_name, session_id=session_id, reuse=self.reusable
         )
 
     async def screenshot(self) -> bytes | None:

@@ -30,7 +30,7 @@ flowchart LR
 `BrowserReplTool` implements tinker-cookbook's `Tool` protocol (`name`, `description`, `parameters_schema`, `run`, `to_spec`).
 
 - **Spec:** one required string parameter, `code`. The description combines short REPL semantics (persistence, printing, `js()` scoping, truncation) with `core/repl_reference.md`, the method reference generated in kernel-images. WebMCP methods are left out by default to keep the prompt small (`scripts/sync_repl_docs.py --include-webmcp` to add them).
-- **Browser lifecycle:** the first `run()` acquires a browser from the pool, resets the REPL, and opens the task's start URL. `release()` returns it with `reuse=True`, or `reuse=False` if the session was lost (HTTP 404/410). Acquisition is lazy because cookbook retry strategies call `make_envs()` again and use only one of the new envs.
+- **Browser lifecycle:** the first `run()` acquires a browser from the pool, resets the REPL, and opens the task's start URL in a fresh browser context. Pools return browsers as the last occupant left them, so setup disposes every older context and clears the default context's cookies and extra tabs. `release()` returns the browser with `reuse=True`, or `reuse=False` if setup failed or the session was lost (HTTP 404/410). Acquisition is lazy because cookbook retry strategies call `make_envs()` again and use only one of the new envs.
 - **Output:** text items are joined, image items are replaced with a placeholder, errors are appended as `Error: ...`, and the result is capped at 4,000 characters.
 - **Judge evidence:** after every call the tool captures a screenshot with `browsers.computer.capture_screenshot` and records the cell (`ReplCall`). The policy never sees these screenshots.
 
@@ -42,7 +42,7 @@ flowchart LR
 
 ### `WebJudgeReward` — the reward
 
-Called once per episode at the end with the message history. It takes the final assistant message as the answer and builds a WebJudge `Trajectory`:
+Called once per episode at the end with the message history. An episode with no `browser_repl` calls gets 0.0 without judging. Otherwise it takes the final assistant message as the answer and builds a WebJudge `Trajectory`:
 
 - `action_history`: each REPL cell (truncated to 1,000 chars) followed by `Final answer: ...`
 - `screenshots`: one per REPL call, downscaled to 1280px
