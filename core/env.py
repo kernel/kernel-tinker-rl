@@ -137,16 +137,24 @@ class WebJudgeReward:
 
     async def __call__(self, messages: list[Message]) -> tuple[float, dict[str, float]]:
         assistant_messages = [m for m in messages if m["role"] == "assistant"]
-        final_answer = get_text_content(assistant_messages[-1]) if assistant_messages else ""
+        last = assistant_messages[-1] if assistant_messages else None
+        final_answer = get_text_content(last) if last else ""
+        # An episode stopped by a turn or token limit ends on a tool call, not an answer.
+        answered = last is not None and not (
+            last.get("tool_calls") or last.get("unparsed_tool_calls")
+        )
         calls = self.tool.calls
         self.result = EpisodeResult(final_answer=final_answer, calls=list(calls))
 
         metrics: dict[str, float] = {
             "repl_calls": len(calls),
             "repl_errors": sum(c.failed for c in calls),
+            "answered": float(answered),
         }
         # Every task requires looking at the browser; an answer without it earns nothing.
-        if self.webjudge is None or not calls:
+        # Unanswered episodes also earn nothing: training's termination policy zeroes them,
+        # but the cookbook's in-training test evaluator doesn't apply it, so score them here.
+        if self.webjudge is None or not calls or not answered:
             return 0.0, metrics
 
         screenshots = [c.screenshot for c in calls if c.screenshot]
