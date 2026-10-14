@@ -22,6 +22,18 @@ The default policy is `Qwen/Qwen3.6-35B-A3B` with thinking disabled: a mixture-o
 
 Nemotron 3.5 Lightning improved by only one task while using the same 3B active parameters, so the default remains Qwen3.6. GRPO learns only from groups with mixed outcomes, making a ~30% baseline a good starting point; at 5% almost every group scores all zeros.
 
+### Thinking models
+
+`thinkingmachines/Inkling-Small` reasons before each tool call and uses the `tml_v0` renderer. Give it room for its reasoning:
+
+```bash
+uv run python -m scripts.evaluate env=agent_auth task_file=examples/agent_auth/tasks_eval.jsonl \
+    model_name=thinkingmachines/Inkling-Small renderer_name=tml_v0 \
+    max_tokens=8192 max_trajectory_tokens=57344 pool_name=rl-training
+```
+
+`max_tokens` is per turn and includes the reasoning; `max_trajectory_tokens` stays one turn below the model's 64K context. The same overrides work for `scripts.train`. `hyperparam_utils.get_lr()` has no calibrated value for Inkling models, so set `learning_rate` explicitly.
+
 ---
 
 ## Quick Start
