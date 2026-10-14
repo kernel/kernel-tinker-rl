@@ -70,7 +70,7 @@ uv run python -m scripts.evaluate \
 
 ```bash
 uv run python scripts/split_dataset.py examples/agent_auth/tasks.jsonl
-# -> examples/agent_auth/tasks_train.jsonl (375) and tasks_eval.jsonl (94)
+# -> examples/agent_auth/tasks_train.jsonl (373) and tasks_eval.jsonl (94)
 ```
 
 ### 6. Measure the baseline
@@ -155,7 +155,7 @@ kernel-tinker-rl/
 │   ├── env.py                # Env group builder, dataset builder, WebJudge reward
 │   └── reward_models/        # WebJudge
 ├── examples/
-│   ├── agent_auth/           # find login/sign-up pages and report their input fields (470 tasks)
+│   ├── agent_auth/           # find login/sign-up pages and report their input fields (467 tasks)
 │   └── web_nav/              # generic navigation tasks (10 tasks)
 ├── scripts/
 │   ├── train.py              # GRPO training

@@ -13,7 +13,7 @@ The system prompt, including a worked example, and the judge criteria are in [`_
 
 ## Task data
 
-`tasks.jsonl` holds 470 LLM-generated tasks across the top ~1000 sites, e.g.:
+`tasks.jsonl` holds 467 LLM-generated tasks across the top ~1000 sites, e.g.:
 
 ```json
 {"id": "github-com-sign-in", "initial_url": "https://github.com", "task": "Navigate to github.com and find the sign in page. ..."}
