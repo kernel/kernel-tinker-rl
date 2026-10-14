@@ -70,6 +70,7 @@ class CLIConfig:
     max_tokens: int = 1024
     temperature: float = 1.0
     max_turns: int = 10
+    max_trajectory_tokens: int = 32 * 1024
     group_size: int = 1  # rollouts per task
     concurrency: int = 8  # tasks in flight; needs concurrency * group_size browsers
     webjudge_model: str | None = "openai/gpt-5-mini"
@@ -135,6 +136,7 @@ async def main(cfg: CLIConfig) -> None:
         batch_size=1,
         group_size=cfg.group_size,
         max_turns=cfg.max_turns,
+        max_trajectory_tokens=cfg.max_trajectory_tokens,
         webjudge_model=cfg.webjudge_model,
     )
 
