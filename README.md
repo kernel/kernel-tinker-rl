@@ -14,13 +14,15 @@ The default policy is `Qwen/Qwen3.6-35B-A3B` with thinking disabled: a mixture-o
 
 | Policy (agent_auth, first 20 eval-split tasks, 1 rollout each) | Renderer | Baseline success | Measured |
 | --- | --- | --- | --- |
+| `Qwen/Qwen3.6-35B-A3B` | `qwen3_5_disable_thinking` | 10/20 (50%) | 2026-10-19 |
 | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16` | `nemotron3_ultra_disable_thinking` | 7/20 (35%) | 2026-10-13 |
-| `Qwen/Qwen3.6-35B-A3B` | `qwen3_5_disable_thinking` | 6/20 (30%) | 2026-10-13 |
 | `Qwen/Qwen3.5-9B` | `qwen3_5_disable_thinking` | 5/20 (25%) | 2026-10-13 |
 | `Qwen/Qwen3-8B` | `qwen3_disable_thinking` | 2/20 (10%) | 2026-10-13 |
 | `Qwen/Qwen3.5-4B` | `qwen3_5_disable_thinking` | 1/20 (5%) | 2026-10-13 |
+| `openai/gpt-oss-20b` | `gpt_oss_no_sysprompt` | 1/20 (5%) | 2026-10-19 |
+| `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | `nemotron3_disable_thinking` | 0/20 (0%) | 2026-10-19 |
 
-Nemotron 3.5 Lightning improved by only one task while using the same 3B active parameters, so the default remains Qwen3.6. GRPO learns only from groups with mixed outcomes, making a ~30% baseline a good starting point; at 5% almost every group scores all zeros.
+Qwen3.6 remains the default: in the latest same-session comparison it scored 10/20, versus 1/20 for GPT-OSS 20B and 0/20 for Nemotron 3 Nano. Both alternatives fit the active-parameter limit but neither reached the three-task improvement required to switch. GRPO learns only from groups with mixed outcomes, making a ~50% baseline a good starting point; near 0% almost every group scores all zeros.
 
 ### Thinking models
 
