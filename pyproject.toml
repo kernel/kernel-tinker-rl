@@ -7,14 +7,14 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "chz>=0.4.0",
-    "kernel>=0.127.0",
+    "kernel>=0.130.0",
     "matplotlib>=3.10.8",
     "openai>=2.13.0",
     "pillow>=12.0.0",
     "python-dotenv>=1.2.1",
     "rich>=14.2.0",
-    "tinker>=0.34.0",
-    "tinker-cookbook>=0.5.7",
+    "tinker>=0.36.0",
+    "tinker-cookbook>=0.5.8",
     "wandb>=0.23.0",
 ]
 
