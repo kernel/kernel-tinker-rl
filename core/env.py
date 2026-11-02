@@ -16,7 +16,6 @@ import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from threading import RLock
 from typing import Any
 
 import chz
@@ -43,37 +42,6 @@ logger = logging.getLogger(__name__)
 
 JUDGE_SCREENSHOT_MAX_SIZE = 1280
 JUDGE_CODE_MAX_CHARS = 1000
-
-# Cookbook envs render prompts in worker threads. Transformers 5 mutates the shared
-# fast-tokenizer backend during encode(), so concurrent calls can fail with
-# `RuntimeError: Already borrowed`. Serialize tokenizer operations within each process.
-_TOKENIZER_LOCK = RLock()
-
-
-class _SynchronizedTokenizer:
-    def __init__(self, tokenizer: Any):
-        self._tokenizer = tokenizer
-
-    def __getattr__(self, name: str) -> Any:
-        attribute = getattr(self._tokenizer, name)
-        if not callable(attribute):
-            return attribute
-
-        def synchronized(*args: Any, **kwargs: Any) -> Any:
-            with _TOKENIZER_LOCK:
-                return attribute(*args, **kwargs)
-
-        return synchronized
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        with _TOKENIZER_LOCK:
-            return self._tokenizer(*args, **kwargs)
-
-
-def _synchronized_tokenizer(tokenizer: Any) -> _SynchronizedTokenizer:
-    if isinstance(tokenizer, _SynchronizedTokenizer):
-        return tokenizer
-    return _SynchronizedTokenizer(tokenizer)
 
 
 @dataclass(frozen=True)
@@ -210,11 +178,6 @@ class BrowserReplEnvGroupBuilder(EnvGroupBuilder):
         self.tools: list[BrowserReplTool] = []
         self.rewards: list[WebJudgeReward] = []
 
-    def __setstate__(self, state: dict[str, Any]) -> None:
-        """Restore tokenizer synchronization after the renderer is unpickled."""
-        self.__dict__.update(state)
-        self.renderer.tokenizer = _synchronized_tokenizer(self.renderer.tokenizer)
-
     async def make_envs(self) -> Sequence[Env]:
         # Retry strategies call make_envs() again before cleanup(), so accumulate tools
         # and rewards rather than replacing them; cleanup() releases every browser.
@@ -301,7 +264,6 @@ class BrowserReplDatasetBuilder(RLDatasetBuilder):
     eval_task_file: str | None = None
     eval_group_size: int = 1
     max_tasks: int | None = None
-    num_epochs: int = 1
     seed: int = 0
     max_turns: int = 10
     max_trajectory_tokens: int = 32 * 1024
@@ -335,7 +297,7 @@ class BrowserReplDatasetBuilder(RLDatasetBuilder):
 
     @chz.init_property
     def _renderer(self) -> Renderer:
-        tokenizer = _synchronized_tokenizer(tokenizer_utils.get_tokenizer(self.model_name))
+        tokenizer = tokenizer_utils.get_tokenizer(self.model_name)
         return get_renderer(self.renderer_name, tokenizer, model_name=self.model_name)
 
     @chz.init_property
@@ -344,26 +306,16 @@ class BrowserReplDatasetBuilder(RLDatasetBuilder):
             return None
         return WebJudge(model=self.webjudge_model, evaluation_criteria=self.evaluation_criteria)
 
-    def _dataset(
-        self, task_file: str, group_size: int, shuffle: bool, num_epochs: int = 1
-    ) -> BrowserTaskDataset:
-        loaded = load_tasks(task_file, limit=self.max_tasks)
-        # The trainer stops after one pass over the dataset, so repeat it once per epoch,
-        # reshuffled each time.
-        tasks: list[BrowserTask] = []
-        for epoch in range(num_epochs):
-            epoch_tasks = list(loaded)
-            if shuffle:
-                random.Random(self.seed + epoch).shuffle(epoch_tasks)
-            tasks.extend(epoch_tasks)
+    def _dataset(self, task_file: str, group_size: int, shuffle: bool) -> BrowserTaskDataset:
+        tasks = load_tasks(task_file, limit=self.max_tasks)
+        if shuffle:
+            random.Random(self.seed).shuffle(tasks)
         return BrowserTaskDataset(
             tasks, self.batch_size, lambda task: self.build_env_group_builder(task, group_size)
         )
 
     async def __call__(self) -> tuple[RLDataset, RLDataset | None]:
-        train = self._dataset(
-            self.task_file, self.group_size, shuffle=True, num_epochs=self.num_epochs
-        )
+        train = self._dataset(self.task_file, self.group_size, shuffle=True)
         test = None
         if self.eval_task_file is not None:
             test = self._dataset(self.eval_task_file, self.eval_group_size, shuffle=False)
