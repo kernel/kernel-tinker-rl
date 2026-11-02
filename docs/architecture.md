@@ -36,9 +36,9 @@ flowchart LR
 
 ### `core/env.py` — environment and dataset
 
-- `BrowserReplEnvGroupBuilder.make_envs()` builds `group_size` envs with `tinker_cookbook.tool_use.build_agent_tool_env`. Each env gets its own `BrowserReplTool` and `WebJudgeReward`, and the conversation starts with the renderer's tool-declaration prefix, the env's system prompt, and the task. `cleanup()` releases every browser the group acquired. Prompt rendering shares a tokenizer, so tokenizer calls are serialized across the cookbook's worker threads to avoid concurrent mutation of Transformers fast-tokenizer state.
+- `BrowserReplEnvGroupBuilder.make_envs()` builds `group_size` envs with `tinker_cookbook.tool_use.build_agent_tool_env`. Each env gets its own `BrowserReplTool` and `WebJudgeReward`, and the conversation starts with the renderer's tool-declaration prefix, the env's system prompt, and the task. `cleanup()` releases every browser the group acquired. The cookbook's Qwen renderer owns a private content tokenizer, avoiding the shared fast-tokenizer race that previously required a repository-level lock.
 - `make_rollout_config()` starts from the cookbook's `agentic()` preset and overrides the limits: `max_turns` turns and tool calls, and `max_trajectory_tokens`. The preset runs tool calls sequentially, retries malformed tool calls up to twice with a corrective message, and clamps rewards to ≤ 0 for episodes stopped by a limit. `scripts/train.py` passes the same termination policy to `train.Config`.
-- `BrowserReplDatasetBuilder` is the `RLDatasetBuilder` that `train.main` calls. It returns a shuffled train dataset and, when `eval_task_file` is set, a test dataset that the trainer evaluates every `eval_every` steps.
+- `BrowserReplDatasetBuilder` is the `RLDatasetBuilder` that `train.main` calls. It returns a shuffled train dataset and, when `eval_task_file` is set, a test dataset that the trainer evaluates every `eval_every` steps. The cookbook's `train.Config.num_epochs` repeats the train dataset for additional passes and `max_steps` caps the resulting global step count.
 
 ### `WebJudgeReward` — the reward
 

@@ -90,7 +90,6 @@ async def cli_main(cfg: CLIConfig) -> None:
         task_file=cfg.task_file or env.task_file,
         eval_task_file=cfg.eval_task_file,
         max_tasks=cfg.max_tasks,
-        num_epochs=cfg.num_epochs,
         pool_name=cfg.pool_name,
         batch_size=cfg.batch_size,
         group_size=cfg.group_size,
@@ -123,6 +122,7 @@ async def cli_main(cfg: CLIConfig) -> None:
         wandb_project=cfg.wandb_project,
         wandb_name=cfg.wandb_name or run_name,
         load_checkpoint_path=cfg.load_checkpoint_path,
+        num_epochs=cfg.num_epochs,
         max_steps=cfg.max_steps,
         termination=builder.rollout_config().termination,
         # Real websites are flaky; retry failed rollouts instead of crashing the run.
