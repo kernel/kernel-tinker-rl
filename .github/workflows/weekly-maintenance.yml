@@ -20,6 +20,12 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      statuses: read
+      id-token: write
     env:
       POOL_NAME: weekly-maintenance-${{ github.run_id }}
     steps:
@@ -169,12 +175,21 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "$bin_dir" >> "$GITHUB_PATH"
 
+      - name: Model credentials
+        uses: kernel/security-workflows/.github/actions/llm-credentials@main
+        with:
+          model: ${{ vars.PI_PREFERRED_MODEL }}
+          anthropic-federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic-organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic-service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          openai-identity-provider-id: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+          openai-service-account-id: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
+          openai-audience: ${{ vars.OPENAI_WIF_AUDIENCE }}
+
       - name: Run weekly maintenance
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GITHUB_CHECKS_TOKEN: ${{ github.token }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GIT_TERMINAL_PROMPT: "0"
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -195,6 +210,12 @@ jobs:
           pi --print --no-session --approve \
             --model "$PI_PREFERRED_MODEL" --thinking max \
             @"$rendered_prompt"
+
+      - name: Stop model credentials
+        if: always()
+        uses: kernel/security-workflows/.github/actions/llm-credentials@main
+        with:
+          stop: true
 
       - name: Confirm the run produced an outcome
         run: |
