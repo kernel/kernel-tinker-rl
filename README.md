@@ -10,7 +10,7 @@ The agent has exactly one tool: `browser_repl`, which runs JavaScript in the [Ke
 - [**Tinker**](https://tinker-docs.thinkingmachines.ai/) + [**tinker-cookbook**](https://github.com/thinking-machines-lab/tinker-cookbook) — LoRA RL training and sampling; the cookbook's `tool_use` library runs the multi-turn tool loop
 - [**WebJudge**](https://github.com/OSU-NLP-Group/Online-Mind2Web) — LLM-as-judge reward from the [Online-Mind2Web benchmark](https://arxiv.org/abs/2504.01382)
 
-The default policy is `Qwen/Qwen3.6-35B-A3B` with thinking disabled: a mixture-of-experts model with 3B active parameters, so sampling is fast and cheap. Any Tinker model with a tool-calling renderer works (`model_name=...`); list them with `tinker.ServiceClient().get_server_capabilities()`.
+The default policy is `Qwen/Qwen3.6-35B-A3B` with thinking disabled: a mixture-of-experts model with 3B active parameters, so sampling is fast and cheap. Any Tinker model with a tool-calling renderer works (`model_name=...`); list them with `tinker.RestClient().get_server_capabilities().result()`.
 
 | Policy (agent_auth, first 20 eval-split tasks, 1 rollout each) | Renderer | Baseline success | Measured |
 | --- | --- | --- | --- |
