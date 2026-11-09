@@ -142,9 +142,9 @@ async def main(cfg: CLIConfig) -> None:
 
     service = tinker.ServiceClient()
     if cfg.model_path:
-        sampling_client = await service.create_sampling_client_async(model_path=cfg.model_path)
+        sampling_client = await service.create_sampling_client(model_path=cfg.model_path)
     else:
-        sampling_client = await service.create_sampling_client_async(base_model=cfg.model_name)
+        sampling_client = await service.create_sampling_client(base_model=cfg.model_name)
     policy = TinkerTokenCompleter(
         sampling_client, max_tokens=cfg.max_tokens, temperature=cfg.temperature
     )
