@@ -185,6 +185,8 @@ jobs:
           openai-identity-provider-id: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
           openai-service-account-id: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
           openai-audience: ${{ vars.OPENAI_WIF_AUDIENCE }}
+          # WebJudge calls OpenRouter; it reads the token from OPENROUTER_ACCESS_TOKEN_FILE.
+          openrouter-federation-policy-id: ${{ vars.OPENROUTER_FEDERATION_POLICY_ID }}
 
       - name: Run weekly maintenance
         env:
@@ -192,7 +194,6 @@ jobs:
           GITHUB_CHECKS_TOKEN: ${{ github.token }}
           GIT_TERMINAL_PROMPT: "0"
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
           PI_PREFERRED_MODEL: ${{ vars.PI_PREFERRED_MODEL }}
           PI_SKIP_VERSION_CHECK: "1"
@@ -202,7 +203,7 @@ jobs:
           : "${PI_PREFERRED_MODEL:?Set the PI_PREFERRED_MODEL organization variable}"
           : "${KERNEL_API_KEY:?Set KERNEL_API_KEY}"
           : "${TINKER_API_KEY:?Set TINKER_API_KEY}"
-          : "${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY}"
+          : "${OPENROUTER_ACCESS_TOKEN_FILE:?Set the OPENROUTER_FEDERATION_POLICY_ID organization variable}"
           rendered_prompt="$RUNNER_TEMP/weekly-maintenance-prompt.md"
           envsubst '${GITHUB_REPOSITORY} ${OUTCOME_FILE} ${POOL_NAME}' \
             < .github/workflows/weekly-maintenance-prompt.md \
