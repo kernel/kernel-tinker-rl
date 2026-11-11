@@ -21,8 +21,9 @@ import io
 import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from PIL import Image
 
 from .base import RewardModel, Trajectory
@@ -80,6 +81,37 @@ class WebJudgeResult:
     screenshot_scores: list[dict] = field(default_factory=list)
 
 
+class _TokenFileAuth:
+    """Sends the token in a file as the bearer, reading the file for every request.
+
+    In CI the file holds a short-lived OpenRouter access token that a background process
+    replaces before it expires, so it can't be read once at startup. A plain callable rather
+    than an httpx.Auth subclass, because the SDK's HTTP client is not always httpx itself.
+    """
+
+    def __init__(self, path: str):
+        self.path = Path(path)
+
+    def __call__(self, request):
+        request.headers["Authorization"] = f"Bearer {self.path.read_text().strip()}"
+        return request
+
+
+def _openrouter_client(api_key: str | None, base_url: str) -> AsyncOpenAI:
+    """An OpenRouter client using, in order: api_key, OPENROUTER_API_KEY, or the access token
+    in OPENROUTER_ACCESS_TOKEN_FILE (set by workload identity federation in CI)."""
+    key = api_key or os.getenv("OPENROUTER_API_KEY")
+    token_file = os.getenv("OPENROUTER_ACCESS_TOKEN_FILE")
+    if key or not token_file:
+        return AsyncOpenAI(api_key=key, base_url=base_url)
+    # The SDK requires an api_key; the auth hook replaces the header it builds from it.
+    return AsyncOpenAI(
+        api_key="federated",
+        base_url=base_url,
+        http_client=DefaultAsyncHttpxClient(auth=_TokenFileAuth(token_file)),
+    )
+
+
 class WebJudge(RewardModel):
     """
     WebJudge evaluator for web navigation trajectories.
@@ -107,16 +139,14 @@ class WebJudge(RewardModel):
 
         Args:
             model: Model name (OpenRouter format, e.g., "openai/gpt-5-mini")
-            api_key: API key for OpenRouter. Falls back to OPENROUTER_API_KEY env var.
+            api_key: API key for OpenRouter. Falls back to the OPENROUTER_API_KEY env var, then
+                to the access token in OPENROUTER_ACCESS_TOKEN_FILE.
             base_url: API base URL. Defaults to OpenRouter.
             evaluation_criteria: Custom evaluation criteria for the judgment phase.
                 If None, uses DEFAULT_EVALUATION_CRITERIA (designed for e-commerce tasks).
                 Override this for different task types (e.g., authentication, navigation).
         """
-        self.client = AsyncOpenAI(
-            api_key=api_key or os.getenv("OPENROUTER_API_KEY"),
-            base_url=base_url,
-        )
+        self.client = _openrouter_client(api_key, base_url)
         self.model = model
         self.evaluation_criteria = evaluation_criteria
 
