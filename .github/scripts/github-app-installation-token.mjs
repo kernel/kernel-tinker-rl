@@ -22,9 +22,10 @@ const appId = process.env.GITHUB_APP_ID;
 const installationId = process.env.GITHUB_APP_INSTALLATION_ID;
 const privateKeyPath = process.env.GITHUB_APP_PRIVATE_KEY_FILE;
 const repository = process.env.GITHUB_APP_REPOSITORY;
+const permissions = process.env.GITHUB_APP_PERMISSIONS;
 
-if (!appId || !installationId || !privateKeyPath) {
-  throw new Error("GitHub App ID, installation ID, and private key file are required");
+if (!appId || !installationId || !privateKeyPath || !permissions) {
+  throw new Error("GitHub App ID, installation ID, private key file, and permissions are required");
 }
 
 const now = Math.floor(Date.now() / 1000);
@@ -49,7 +50,10 @@ const response = await fetch(
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "kernel-tinker-rl-weekly-maintenance",
     },
-    body: repository ? JSON.stringify({ repositories: [repository] }) : undefined,
+    body: JSON.stringify({
+      ...(repository ? { repositories: [repository] } : {}),
+      permissions: JSON.parse(permissions),
+    }),
   },
 );
 

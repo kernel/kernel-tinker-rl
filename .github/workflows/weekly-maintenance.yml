@@ -37,6 +37,7 @@ jobs:
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: kernel-tinker-rl
+          permission-contents: read
 
       - name: Checkout repository
         uses: actions/checkout@v4.4.0
@@ -168,6 +169,7 @@ jobs:
             echo "GITHUB_APP_INSTALLATION_ID=$APP_INSTALLATION_ID"
             echo "GITHUB_APP_PRIVATE_KEY_FILE=$private_key_file"
             echo "GITHUB_APP_REPOSITORY=kernel-tinker-rl"
+            echo 'GITHUB_APP_PERMISSIONS={"actions":"read","contents":"write","pull_requests":"write"}'
             echo "GITHUB_APP_TOKEN_CACHE=$auth_dir/token.json"
             echo "GITHUB_APP_TOKEN_HELPER=$token_helper"
             echo "GITHUB_REAL_GH=$real_gh"
