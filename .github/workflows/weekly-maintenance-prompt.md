@@ -39,7 +39,7 @@ Out of scope: task data, reward design, hyperparameter tuning beyond defaults th
 - Never edit `uv.lock` or `core/repl_reference.md` by hand. Regenerate them with `uv` and `scripts/sync_repl_docs.py`.
 - Never expose secret values in logs, commits, pull request text, or comments.
 - If `VIRTUAL_ENV` points outside the repository, unset it before running `uv`.
-- Do not finish while the pull request is open, BugBot is pending, checks are failing, or an actionable BugBot finding remains.
+- Do not finish while BugBot is pending, checks are failing, or an actionable BugBot finding remains. Once the pull request is green, write `ready:<pr-number>` to `${OUTCOME_FILE}` and stop; the workflow merges it.
 
 # Step 1: Resume or create the evergreen branch
 
