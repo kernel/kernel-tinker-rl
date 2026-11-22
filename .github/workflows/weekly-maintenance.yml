@@ -7,22 +7,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
-  checks: read
   contents: read
-  pull-requests: read
-  statuses: read
 
 concurrency:
   group: weekly-maintenance
   cancel-in-progress: false
 
 jobs:
+  # Pi runs in a Docker Sandbox with no GitHub or model credentials inside it; see the reusable
+  # workflow.
   update:
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
-    # github.token reaches the agent only as GITHUB_CHECKS_TOKEN, for reading checks and statuses.
-    # Writes go through the GitHub App token broker.
     permissions:
       actions: read
       checks: read
@@ -30,141 +24,40 @@ jobs:
       pull-requests: read
       statuses: read
       id-token: write
-    env:
-      POOL_NAME: weekly-maintenance-${{ github.run_id }}
+    uses: kernel/security-workflows/.github/workflows/sandboxed-agent.yml@main
+    with:
+      prompt-file: .github/workflows/weekly-maintenance-prompt.md
+      prompt-vars: POOL_NAME
+      # workflows: write lets the agent push the evergreen branch after merging a main that
+      # changed .github/workflows/.
+      app-permissions: '{"actions":"write","contents":"write","pull_requests":"write","workflows":"write"}'
+      merge: true
+      evergreen-branch: automation/weekly-maintenance
+      timeout-minutes: 240
+      env: |
+        POOL_NAME=weekly-maintenance-${{ github.run_id }}
+      setup: |
+        curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
+        sudo npm install -g --silent @onkernel/cli
+        kernel --version
+        uv --version
+    secrets:
+      ADMIN_APP_ID: ${{ secrets.ADMIN_APP_ID }}
+      ADMIN_APP_PRIVATE_KEY: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+      DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_PAT: ${{ secrets.DOCKERHUB_TOKEN }}
+      AGENT_SECRETS: |
+        CURSOR_API_KEY=${{ secrets.CURSOR_API_KEY }}
+        KERNEL_API_KEY=${{ secrets.KERNEL_API_KEY }}
+        TINKER_API_KEY=${{ secrets.TINKER_API_KEY }}
+
+  delete-pool:
+    needs: update
+    if: always()
+    runs-on: ubuntu-latest
     steps:
-      - name: Generate app token
-        id: app-token
-        uses: actions/create-github-app-token@v3.3.0
-        with:
-          app-id: ${{ secrets.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: kernel-tinker-rl
-          permission-contents: read
-
-      - name: Checkout repository
-        uses: actions/checkout@v4.4.0
-        with:
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4.4.0
-        with:
-          node-version: "22"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v6.8.0
-
-      - name: Install Kernel CLI
-        run: |
-          npm install -g --ignore-scripts @onkernel/cli
-          kernel --version
-
-      - name: Install Pi and web access
-        env:
-          PI_TELEMETRY: "0"
-        run: |
-          npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-          pi --version
-
-      # Pi runs in a container that cannot reach the app private key; it gets scoped
-      # installation tokens from a broker that holds the key. See the script for details.
-      - name: Start the agent sandbox
-        env:
-          GITHUB_APP_ID: ${{ secrets.ADMIN_APP_ID }}
-          GITHUB_APP_INSTALLATION_ID: ${{ steps.app-token.outputs.installation-id }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-          GITHUB_APP_REPOSITORY: kernel-tinker-rl
-          GITHUB_APP_PERMISSIONS: '{"actions":"read","contents":"write","pull_requests":"write"}'
-          PI_TELEMETRY: "0"
-          PI_AGENT_ENV: PI_TELEMETRY
-        run: |
-          bash .github/scripts/pi-agent-sandbox.sh setup
-          bash .github/scripts/pi-agent-sandbox.sh exec pi install npm:pi-web-access@latest
-          bash .github/scripts/pi-agent-sandbox.sh exec pi list
-          echo "OUTCOME_FILE=$PI_AGENT_HOME/weekly-maintenance.outcome" >> "$GITHUB_ENV"
-
-      - name: Model credentials
-        uses: kernel/security-workflows/.github/actions/llm-credentials@main
-        with:
-          model: ${{ vars.PI_PREFERRED_MODEL }}
-          anthropic-federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
-          anthropic-organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
-          anthropic-service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
-          openai-identity-provider-id: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
-          openai-service-account-id: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
-          openai-audience: ${{ vars.OPENAI_WIF_AUDIENCE }}
-          # WebJudge calls OpenRouter; it reads the token from OPENROUTER_ACCESS_TOKEN_FILE.
-          openrouter-federation-policy-id: ${{ vars.OPENROUTER_FEDERATION_POLICY_ID }}
-
-      - name: Run weekly maintenance
-        env:
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          GITHUB_CHECKS_TOKEN: ${{ github.token }}
-          GIT_TERMINAL_PROMPT: "0"
-          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
-          TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
-          PI_PREFERRED_MODEL: ${{ vars.PI_PREFERRED_MODEL }}
-          PI_SKIP_VERSION_CHECK: "1"
-          PI_TELEMETRY: "0"
-          PI_AGENT_ENV: >-
-            CURSOR_API_KEY GITHUB_CHECKS_TOKEN KERNEL_API_KEY TINKER_API_KEY OUTCOME_FILE POOL_NAME
-            PI_PREFERRED_MODEL PI_SKIP_VERSION_CHECK PI_TELEMETRY
-        run: |
-          : "${CURSOR_API_KEY:?Set CURSOR_API_KEY with Cursor admin scope}"
-          : "${PI_PREFERRED_MODEL:?Set the PI_PREFERRED_MODEL organization variable}"
-          : "${KERNEL_API_KEY:?Set KERNEL_API_KEY}"
-          : "${TINKER_API_KEY:?Set TINKER_API_KEY}"
-          : "${OPENROUTER_ACCESS_TOKEN_FILE:?Set the OPENROUTER_FEDERATION_POLICY_ID organization variable}"
-          rendered_prompt="$PI_AGENT_HOME/weekly-maintenance-prompt.md"
-          envsubst '${GITHUB_REPOSITORY} ${OUTCOME_FILE} ${POOL_NAME}' \
-            < .github/workflows/weekly-maintenance-prompt.md \
-            | sudo -u pi-agent tee "$rendered_prompt" >/dev/null
-          bash .github/scripts/pi-agent-sandbox.sh exec pi --print --no-session --approve \
-            --model "$PI_PREFERRED_MODEL" --thinking max \
-            @"$rendered_prompt"
-
-      - name: Stop model credentials
-        if: always()
-        uses: kernel/security-workflows/.github/actions/llm-credentials@main
-        with:
-          stop: true
-
-      - name: Confirm the run produced an outcome
-        run: |
-          outcome="$(sudo -u pi-agent cat "$OUTCOME_FILE" 2>/dev/null | tr -d '\r\n' || true)"
-          case "$outcome" in
-            no-updates)
-              open_pr="$(gh pr list --head automation/weekly-maintenance --state open --json number --jq '.[0].number // ""')"
-              if [ -n "$open_pr" ]; then
-                echo "::error::Agent reported no updates while PR #$open_pr remains open"
-                exit 1
-              fi
-              echo "Everything in scope is current."
-              ;;
-            merged:*)
-              pr_number="${outcome#merged:}"
-              state="$(gh pr view "$pr_number" --json state --jq .state)"
-              if [ "$state" != "MERGED" ]; then
-                echo "::error::Agent reported $outcome, but PR #$pr_number is $state"
-                exit 1
-              fi
-              echo "Merged PR #$pr_number."
-              ;;
-            *)
-              echo "::error::Agent exited without recording no-updates or merged:<pr-number> in $OUTCOME_FILE"
-              exit 1
-              ;;
-          esac
-
       - name: Delete the smoke-test browser pool
-        if: always()
         env:
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
-        run: kernel browser-pools delete "$POOL_NAME" --force || true
-
-      - name: Stop the agent sandbox
-        if: always()
-        run: bash .github/scripts/pi-agent-sandbox.sh teardown
+          POOL_NAME: weekly-maintenance-${{ github.run_id }}
+        run: npx --yes @onkernel/cli browser-pools delete "$POOL_NAME" --force || true
