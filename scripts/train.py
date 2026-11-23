@@ -53,8 +53,9 @@ class CLIConfig:
     model_name: str = "Qwen/Qwen3.6-35B-A3B"
     renderer_name: str = "qwen3_5_disable_thinking"
     lora_rank: int = 32
-    # Not hyperparam_utils.get_lr(): that is a supervised LoRA rate (5e-4 here), and one RL
-    # step at it breaks tool calling. The cookbook's RL recipes use 1e-5 to 4e-5.
+    # Not hyperparam_utils.get_lr(): that is calibrated for supervised LoRA training, and one
+    # RL step at its substantially higher rate breaks tool calling. Cookbook RL recipes use
+    # 1e-5 to 4e-5.
     learning_rate: float = 4e-5
 
     # Rollouts
